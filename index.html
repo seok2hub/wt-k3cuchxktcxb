@@ -7,6 +7,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="WOD 타이머">
+<!-- 홈 화면 앱: 상태 표시줄 뒤까지 화면을 쓰고, 내용은 safe-area 여백으로 보호 -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
 <title>WOD 타이머</title>
 <style>
   :root {
@@ -25,7 +30,12 @@
   svg.i { width: 1.25em; height: 1.25em; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; flex: none; }
 
   /* ---------- 설정 화면 ---------- */
-  #setup { min-height: 100%; padding: max(16px, env(safe-area-inset-top)) 16px 32px; }
+  #setup {
+    min-height: 100%;
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+             calc(32px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  }
+  .ver { color: var(--s-dim); font-size: 12px; text-align: center; opacity: .7; margin-top: 6px; }
   .wrap { max-width: 720px; margin: 0 auto; }
   .sh { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 0 18px; }
   .sh h1 { font-size: 26px; margin: 0; letter-spacing: -0.01em; }
@@ -64,6 +74,40 @@
     .tabs button { font-size: 14px; padding: 10px 2px; }
     .fields { grid-template-columns: 1fr; }
   }
+
+  /* ---------- 시작 화면 "Are You Ready?" ---------- */
+  .ready, .bye { position: fixed; inset: 0; z-index: 50; user-select: none; -webkit-user-select: none; cursor: pointer; outline: none; }
+  /* 보색 두 가지: 노랑 ↔ 남보라. 위/아래가 서로 반대 색, .swap 으로 맞바뀜 */
+  .ready { --c1: #ffd400; --c2: #3b2bd9; display: flex; flex-direction: column; }
+  .ready.swap { --c1: #3b2bd9; --c2: #ffd400; }
+  .ready .half {
+    flex: 1; display: flex; justify-content: center; text-align: center;
+    font-weight: 900; font-size: min(17vw, 15vh); line-height: 1; letter-spacing: -0.02em;
+    padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right));
+  }
+  .ready .top { background: var(--c1); color: var(--c2); align-items: flex-end; padding-top: env(safe-area-inset-top); padding-bottom: 1.5vh; }
+  .ready .bottom { background: var(--c2); color: var(--c1); align-items: flex-start; padding-top: 1.5vh; }
+  /* '동작 줄이기' 켜짐: 깜빡임 대신 천천히 색이 바뀜 */
+  .ready.slow .half { transition: background-color 3s ease, color 3s ease; }
+  .ready .rhint {
+    position: absolute; left: 0; right: 0; bottom: calc(96px + env(safe-area-inset-bottom));
+    text-align: center; font-size: clamp(15px, 2vw, 22px); font-weight: 700; color: var(--c1); opacity: .85; margin: 0; pointer-events: none;
+  }
+  .ready.slow .rhint { transition: color 3s ease; }
+  .no {
+    position: absolute; right: max(16px, env(safe-area-inset-right)); bottom: calc(16px + env(safe-area-inset-bottom));
+    min-width: 96px; min-height: 56px; padding: 0 28px; border-radius: 16px;
+    border: 2px solid rgba(0,0,0,.25); background: #fff; color: #111; font-size: 22px; font-weight: 800;
+  }
+  .bye {
+    background: #0b0c0f; color: #e8e8ea; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; text-align: center;
+    padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+    animation: fadein .8s ease;
+  }
+  .bye .bye-t { font-size: clamp(30px, 7vw, 84px); font-weight: 800; line-height: 1.15; }
+  .bye .bye-s { font-size: clamp(14px, 2vw, 20px); color: #8b909a; line-height: 1.6; }
+  @keyframes fadein { from { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .bye { animation: none; } }
 
   /* ---------- 실행 화면 ---------- */
   body[data-phase="idle"]    { --bg: #1b1d22; --fg: #ffffff; }
@@ -129,8 +173,20 @@
 </head>
 <body data-phase="idle">
 
+<!-- ================= 시작 화면 ================= -->
+<section id="ready" class="ready" role="button" tabindex="0" aria-label="Are You Ready? 화면을 누르면 타이머로 이동합니다">
+  <div class="half top"><span>Are You</span></div>
+  <div class="half bottom"><span>Ready?</span></div>
+  <p class="rhint">화면을 누르면 시작</p>
+  <button class="no" id="noBtn" type="button">No</button>
+</section>
+<section id="bye" class="bye" role="button" tabindex="0" hidden>
+  <div class="bye-t">Come back when you're ready</div>
+  <div class="bye-s">준비되면 다시 만나요<br>화면을 누르면 처음으로 돌아갑니다</div>
+</section>
+
 <!-- ================= 설정 화면 ================= -->
-<section id="setup">
+<section id="setup" hidden>
   <div class="wrap">
     <header class="sh">
       <h1>WOD 타이머</h1>
@@ -158,6 +214,7 @@
     </div>
 
     <p class="hint">스페이스 = 시작/일시정지 · R = 리셋 · F = 전체 화면</p>
+    <p class="ver" id="verText"></p>
   </div>
 </section>
 
@@ -414,15 +471,16 @@
     else if (kind === 'long') tone(1320, 0.7, 0.3);
     else if (kind === 'end') { tone(1320, 0.25, 0.3); setTimeout(function () { tone(1760, 0.9, 0.3); }, 300); }
   }
-  // 브라우저 자동재생 정책: 첫 사용자 입력 때 오디오 깨우기
+  // 브라우저 자동재생 정책: 사용자가 화면을 누를 때 오디오를 켬.
+  // iOS Safari는 touchend/click 같은 "누름이 끝나는" 이벤트에서만 소리를 허용하고,
+  // 앱이 백그라운드에 다녀오면 오디오가 다시 멈추기도 하므로(interrupted),
+  // 한 번만 하지 않고 소리가 꺼져 있을 때마다 다시 켬.
   function unlockAudio() {
+    if (actx && actx.state === 'running') return;
     var a = audio();
     if (a) { try { var b = a.createBuffer(1, 1, 22050), s = a.createBufferSource(); s.buffer = b; s.connect(a.destination); s.start(0); } catch (e) {} }
-    window.removeEventListener('pointerdown', unlockAudio, true);
-    window.removeEventListener('keydown', unlockAudio, true);
   }
-  window.addEventListener('pointerdown', unlockAudio, true);
-  window.addEventListener('keydown', unlockAudio, true);
+  ['touchend', 'click', 'keydown'].forEach(function (t) { window.addEventListener(t, unlockAudio, true); });
 
   function renderSound() {
     $('soundSetup').innerHTML = (soundOn ? ICON.soundOn + ' 소리 켬' : ICON.soundOff + ' 소리 끔');
@@ -596,6 +654,7 @@
   function showSetup() {
     if (T.status === 'running' && !confirm('타이머를 멈추고 설정으로 돌아갈까요?')) return;
     reset();
+    if (pendingReload) { reloadForUpdate(); return; }
     $('run').hidden = true; $('setup').hidden = false;
     document.body.setAttribute('data-phase', 'idle');
     renderPreview();
@@ -739,8 +798,58 @@
   onClick('finishBtn', finishForTime);
   $('bigWrap').addEventListener('click', toggle);
 
+  // ---------- 시작 화면 "Are You Ready?" ----------
+  // 깜빡임: 0.7초마다 위/아래 색 맞바꿈 → 초당 약 1.4회 (광과민성 기준 초당 3회 미만)
+  // '동작 줄이기' 설정 시: 4초마다 3초에 걸쳐 천천히 색 전환
+  var BLINK_MS = 700, SLOW_MS = 4000;
+  var blinkTimer = null;
+  var reduceMQ = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  function startBlink() {
+    stopBlink();
+    var slow = !!(reduceMQ && reduceMQ.matches);
+    $('ready').classList.toggle('slow', slow);
+    blinkTimer = setInterval(function () { $('ready').classList.toggle('swap'); }, slow ? SLOW_MS : BLINK_MS);
+  }
+  function stopBlink() { if (blinkTimer) { clearInterval(blinkTimer); blinkTimer = null; } }
+  if (reduceMQ) {
+    var onMotionPref = function () { if (!$('ready').hidden) startBlink(); };
+    if (reduceMQ.addEventListener) reduceMQ.addEventListener('change', onMotionPref); else if (reduceMQ.addListener) reduceMQ.addListener(onMotionPref);
+  }
+  function showReady() {
+    $('bye').hidden = true; $('setup').hidden = true; $('run').hidden = true;
+    $('ready').hidden = false; startBlink();
+  }
+  function enterApp() {
+    unlockAudio(); // 이 누름으로 소리 활성화
+    stopBlink();
+    $('ready').hidden = true; $('setup').hidden = false;
+    renderPreview();
+  }
+  function sayNo() {
+    stopBlink();
+    try { window.close(); } catch (e) {} // 대부분의 브라우저/홈 화면 앱은 막음
+    setTimeout(function () {
+      if (window.closed || $('ready').hidden) return; // 닫혔거나 그 사이 화면을 눌러 들어간 경우
+      $('ready').hidden = true; $('bye').hidden = false;
+    }, 300);
+  }
+  $('ready').addEventListener('click', enterApp);
+  $('noBtn').addEventListener('click', function (ev) { ev.stopPropagation(); sayNo(); });
+  $('bye').addEventListener('click', showReady);
+
   // ---------- 키보드 ----------
   document.addEventListener('keydown', function (ev) {
+    // 시작 화면 / 작별 화면: Enter·스페이스 = 화면 누름, Esc = No
+    if (!$('ready').hidden) {
+      if (ev.target === $('noBtn')) return; // No 버튼에 포커스가 있으면 버튼 기본 동작
+      if (ev.key === 'Enter' || ev.code === 'Space') { ev.preventDefault(); enterApp(); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); sayNo(); }
+      return;
+    }
+    if (!$('bye').hidden) {
+      if (ev.key === 'Enter' || ev.code === 'Space') { ev.preventDefault(); showReady(); }
+      return;
+    }
     var tag = ev.target && ev.target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.repeat) return;
@@ -756,11 +865,56 @@
     }
   });
 
+  // ---------- 오프라인(서비스 워커) + 새 버전 반영 ----------
+  // 새 버전 확인 시점: 앱을 열 때 + 홈 화면 앱이 다시 앞으로 나올 때.
+  // 새 버전이 설치되면 설정 화면에서는 바로 새로고침, 운동 중이면 설정 화면으로 돌아올 때 새로고침.
+  var pendingReload = false;
+  function showVersion() {
+    if (!window.caches) return;
+    caches.keys().then(function (keys) {
+      var k = keys.filter(function (x) { return x.indexOf('wod-timer-') === 0; }).pop();
+      $('verText').textContent = k ? '버전 ' + k.replace('wod-timer-', '') + ' · 오프라인 사용 가능' : '';
+    }).catch(function () {});
+  }
+  function reloadForUpdate() {
+    // 업데이트 새로고침 뒤에는 시작 화면을 건너뛰고 원래 보던 설정 화면으로
+    try { if ($('ready').hidden && $('bye').hidden) sessionStorage.setItem('wodTimer.skipReady', '1'); } catch (e) {}
+    location.reload();
+  }
+  function applyUpdate() {
+    if ($('run').hidden) reloadForUpdate();
+    else pendingReload = true;
+  }
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    var hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (reg) {
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') reg.update().catch(function () {});
+      });
+    }).catch(function () {});
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (hadController) applyUpdate(); // 첫 설치 때는 새로고침하지 않음
+      hadController = true;
+      showVersion();
+    });
+    navigator.serviceWorker.ready.then(showVersion);
+  } else {
+    $('verText').textContent = '파일로 직접 연 상태 (오프라인 저장은 웹 주소로 열 때만 동작)';
+  }
+
+  // 아이폰처럼 전체 화면 기능이 없는 기기에서는 버튼 숨김 (홈 화면 앱은 이미 주소창 없이 열림)
+  if (!(document.fullscreenEnabled || document.webkitFullscreenEnabled)) $('fsBtn').hidden = true;
+
   renderSound();
   renderSetup();
+  var skipReady = false;
+  try { skipReady = sessionStorage.getItem('wodTimer.skipReady') === '1'; sessionStorage.removeItem('wodTimer.skipReady'); } catch (e) {}
+  if (skipReady) { $('ready').hidden = true; $('setup').hidden = false; }
+  else startBlink();
 
   // 테스트/디버그용 (화면 동작에는 영향 없음)
-  window.wodDebug = { beepLog: beepLog, state: function () { return { status: T.status, elapsed: elapsed() }; } };
+  window.wodDebug = { beepLog: beepLog, state: function () { return { status: T.status, elapsed: elapsed() }; },
+                      audioState: function () { return actx ? actx.state : 'none'; } };
 })();
 </script>
 </body>

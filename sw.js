@@ -7,7 +7,7 @@
  *     (운동 중이면 끝나고 설정 화면으로 돌아올 때 적용)
  *   - 설정 화면 맨 아래에 지금 실행 중인 버전이 표시됩니다.
  */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = 'wod-timer-' + VERSION;
 const FILES = [
   './',

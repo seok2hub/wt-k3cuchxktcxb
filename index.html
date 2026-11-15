@@ -508,75 +508,7 @@
   }
   ['touchend', 'click', 'keydown'].forEach(function (t) { window.addEventListener(t, unlockAudio, true); });
   // 앱으로 돌아오면 오디오 다시 켜기 시도 (안 되면 다음 누름 때 켜짐)
-  // 시작 화면 음악은 앱이 뒤로 가면 멈추고, 돌아오면 다시 재생
-  document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'visible') { if (actx) audio(); if (!$('ready').hidden) startMusic(); }
-    else stopMusic();
-  });
-
-  // ---------- 시작 화면 음악 (직접 만든 곡, 외부 음원 없음) ----------
-  // 0.35초 박자(시작 화면 깜빡임 0.7초와 맞춤). 코드 진행 Am–F–C–G 4마디 반복.
-  // 브라우저는 화면을 한 번 누르기 전에는 소리를 막기 때문에,
-  // 처음 열 때는 화면을 누르는 순간 짧은 시작 효과음이 나고,
-  // 이미 소리가 켜진 뒤 시작 화면으로 돌아오면(작별 화면 → 누름) 음악이 반복 재생됨.
-  var BEAT = 0.35;
-  var CHORDS = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]]; // A단조, F, C, G (MIDI)
-  var LEAD = [69, 72, 76, 72, 69, 72, 76, 79,  77, 76, 72, 69, 72, 77, 76, 72,
-              67, 72, 76, 79, 76, 72, 79, 84,  83, 79, 74, 71, 74, 79, 83, 86];
-  var musicTimer = null, musicNext = 0, musicStep = 0, musicBus = null;
-  var hz = function (m) { return 440 * Math.pow(2, (m - 69) / 12); };
-  function note(a, dest, type, freq, t, dur, vol, freqEnd) {
-    var o = a.createOscillator(), g = a.createGain();
-    o.type = type; o.frequency.setValueAtTime(freq, t);
-    if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, t + dur);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.005);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + 0.02);
-  }
-  var noiseBuf = null;
-  function hat(a, dest, t, vol, dur) {
-    if (!noiseBuf) { noiseBuf = a.createBuffer(1, a.sampleRate * 0.3, a.sampleRate); var d = noiseBuf.getChannelData(0); for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
-    var s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
-    s.buffer = noiseBuf; f.type = 'highpass'; f.frequency.value = dur > 0.1 ? 1500 : 7000;
-    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    s.connect(f); f.connect(g); g.connect(dest); s.start(t); s.stop(t + dur + 0.02);
-  }
-  function playStep(a, dest, step, t) { // step: 8분음표 단위 (마디당 8칸, 4마디 = 32칸)
-    var bar = Math.floor(step / 8) % 4, pos = step % 8, ch = CHORDS[bar];
-    if (pos % 2 === 0) note(a, dest, 'sine', 150, t, 0.28, 0.9, 45);            // 킥 (박마다)
-    if (pos === 2 || pos === 6) hat(a, dest, t, 0.35, 0.18);                    // 박수
-    hat(a, dest, t + (pos % 2 ? 0 : BEAT / 2), 0.12, 0.04);                     // 하이햇
-    note(a, dest, 'sawtooth', hz(ch[0] - 24), t, BEAT / 2 * 0.9, 0.22);         // 베이스
-    note(a, dest, 'square', hz(LEAD[step % 32]), t, BEAT / 2 * 0.8, 0.07);      // 멜로디
-    if (pos === 0) ch.forEach(function (m) { note(a, dest, 'triangle', hz(m + 12), t, BEAT * 4, 0.06); }); // 화음
-  }
-  function startMusic() {
-    stopMusic();
-    if (!soundOn || !actx || actx.state === 'closed') return; // 아직 한 번도 누르지 않았으면(소리 잠김) 재생 안 함
-    var a = audio();
-    if (a.state !== 'running') { // 다시 켜지는 중이면 켜진 뒤 시작
-      a.resume().then(function () { if (!$('ready').hidden && !musicTimer && a.state === 'running') startMusic(); }).catch(function () {});
-      return;
-    }
-    musicBus = a.createGain(); musicBus.gain.value = 0.5; musicBus.connect(a.destination);
-    musicStep = 0; musicNext = a.currentTime + 0.08;
-    var bus = musicBus;
-    musicTimer = setInterval(function () {
-      while (musicNext < a.currentTime + 0.3) { playStep(a, bus, musicStep, musicNext); musicNext += BEAT / 2; musicStep++; }
-    }, 60);
-  }
-  function stopMusic() {
-    if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
-    if (musicBus && actx) { var b = musicBus, t = actx.currentTime; try { b.gain.cancelScheduledValues(t); b.gain.setValueAtTime(b.gain.value, t); b.gain.linearRampToValueAtTime(0, t + 0.15); } catch (e) {} setTimeout(function () { try { b.disconnect(); } catch (e) {} }, 400); }
-    musicBus = null;
-  }
-  function goSting() { // 시작 화면을 눌렀을 때: 올라가는 소리 + A장조 화음
-    var a = audio(); if (!a || !soundOn) return;
-    var t = a.currentTime + 0.03, bus = a.createGain(); bus.gain.value = 0.5; bus.connect(a.destination);
-    note(a, bus, 'sawtooth', 220, t, 0.45, 0.15, 880);
-    [57, 61, 64, 69].forEach(function (m) { note(a, bus, 'square', hz(m + 12), t + 0.45, 1.1, 0.07); });
-    note(a, bus, 'sine', 150, t + 0.45, 0.35, 0.9, 45); hat(a, bus, t + 0.45, 0.3, 0.25);
-  }
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && actx) audio(); });
 
   function renderSound() {
     $('soundSetup').innerHTML = (soundOn ? ICON.soundOn + ' 소리 켬' : ICON.soundOff + ' 소리 끔');
@@ -913,20 +845,21 @@
   }
   function showReady() {
     $('bye').hidden = true; $('setup').hidden = true; $('run').hidden = true;
-    $('ready').hidden = false; startBlink(); startMusic();
+    $('ready').hidden = false; startBlink();
   }
   function enterApp() {
     unlockAudio(); // 이 누름으로 소리 활성화
-    stopMusic(); goSting();
     stopBlink();
     $('ready').hidden = true; $('setup').hidden = false;
     renderPreview();
   }
   function sayNo() {
-    stopBlink(); stopMusic();
+    stopBlink();
     try { window.close(); } catch (e) {} // 대부분의 브라우저/홈 화면 앱은 막음
     setTimeout(function () {
-      if (window.closed || $('ready').hidden) return; // 닫혔거나 그 사이 화면을 눌러 들어간 경우
+      // 아이폰 홈 화면 앱은 창이 안 닫혔는데도 window.closed가 true로 나올 수 있어 믿지 않음.
+      // 화면이 아직 보이면(= 안 닫힘) 작별 화면을 띄움.
+      if (document.visibilityState === 'hidden' || $('ready').hidden) return;
       $('ready').hidden = true; $('bye').hidden = false;
     }, 300);
   }
@@ -1011,8 +944,7 @@
 
   // 테스트/디버그용 (화면 동작에는 영향 없음)
   window.wodDebug = { beepLog: beepLog, state: function () { return { status: T.status, elapsed: elapsed() }; },
-                      audioState: function () { return actx ? actx.state : 'none'; },
-                      music: function () { return !!musicTimer; }, silentAudio: function () { return silentEl ? !silentEl.paused : null; } };
+                      audioState: function () { return actx ? actx.state : 'none'; }, silentAudio: function () { return silentEl ? !silentEl.paused : null; } };
 })();
 </script>
 </body>
